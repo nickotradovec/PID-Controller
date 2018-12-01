@@ -1,5 +1,5 @@
 ﻿var blnPaused = false;
-var displayTimeSec = 30;
+var displayTimeSec = 15;
 var screenUpdateIntervalMilliSec = 20;
 var displayPoints = displayTimeSec * 1000 / screenUpdateIntervalMilliSec;
 
@@ -56,7 +56,7 @@ let Model = {
     mass: 0,
     GetNewState: function(timeInterval, state, externalForce, internalForce) {
         state.currentTime += timeInterval;
-        state.currentVelocity += (0.5) * ((externalForce + internalForce) / this.mass) * Math.pow(timeInterval, 2);
+        state.currentVelocity += (0.5) * ((externalForce + internalForce) / this.mass) * timeInterval;
         state.currentPosition += state.currentVelocity * timeInterval;
     }
 }
@@ -83,19 +83,28 @@ let Controller = {
     currentIntegralError: 0,
     GetNewOutput: function(timeInterval, currentVelocity, currentPosition, input) {       
         
-        this.currentOutputForce += (input - currentPosition) * this.tuneP;
+        var PComponent = ((input - currentPosition) * this.tuneP * timeInterval)   
         
-        this.currentIntegralError += timeInterval * (input - currentPosition);
-        this.currentOutputForce += this.currentIntegralError * this.tuneI;
+        this.currentIntegralError += (timeInterval * (input - currentPosition));
+        var IComponent = this.currentIntegralError * this.tuneI;
 
-        this.currentOutputForce -= currentVelocity * this.tuneD;
+        var DComponent = (currentVelocity * this.tuneD * timeInterval * (-1));
+
+        var ControllerPreferred = PComponent + IComponent + DComponent;
+
+        if (Math.abs(ControllerPreferred) < this.maxForceMagnitude) {
+            this.currentOutputForce = ControllerPreferred;
+        } else {
+            this.currentOutputForce = Math.sign(ControllerPreferred) * this.maxForceMagnitude;
+        }
     }
 }
 
 var control = new Object(Controller);
-control.tuneP = 2;
-control.tuneI = 0.5;
-control.tuneD = 0.25;
+control.tuneP = 10000;
+control.tuneI = 10;
+control.tuneD = 3000;
+control.maxForceMagnitude = 20;
 
 Plotly.plot('chartForces', [
     {   x: [iterationToTime(0)],  
@@ -151,7 +160,10 @@ function getPIDToRefreshMultiplier() {
 }
 
 function getInput(time) {
-    return 3;
+    var multiplier = 1;
+    if (Math.floor(time / 5) % 2 > 0) { multiplier = -1; }
+
+    return 3 * multiplier
 }
 
 function iterationToTime(iteration) {
