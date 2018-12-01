@@ -2,6 +2,7 @@
 <html>
 
 <head>
+    <!--  <script src="~/plotly-latest.min.js"></script>  -->
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <script src="jquery-3.3.1.slim.min.js"></script>
 </head>
@@ -10,14 +11,18 @@
 
     <h1>PID Controller Simulation</h1>
     <button type="button" id="pausebutton">Pause/Resume</button><br>
-
-    <!--  <script src="~/plotly-latest.min.js"></script>  -->
-    
+  
+    <h2>External and Controller Forces</h2>
     <div class="wrapper">
-        <div id="chart"></div>
-        <script src="site.js">vv
-        </script>
+        <div id="chartForces"></div>       
     </div>
+
+    <h2>Input and Current Position</h2>
+    <div class="wrapper">
+        <div id="chartPositioning"></div>
+    </div>
+
+    <script src="site.js"></script>
 
 </body>
 

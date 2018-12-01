@@ -1,10 +1,16 @@
 ﻿var blnPaused = false;
-var displayTimeSec = 10;
+var displayTimeSec = 30;
 var screenUpdateIntervalMilliSec = 20;
 var displayPoints = displayTimeSec * 1000 / screenUpdateIntervalMilliSec;
 
-var desiredPIDPollingRate = 200;
-var usePIDIntervalMilliSec = getPIDPollingRate();
+var desiredPIDPollingRate = 50;
+var usePIDIntervalMilliSec = screenUpdateIntervalMilliSec //= getPIDPollingRate();
+
+$("#pausebutton").click(function() {blnPaused = !blnPaused;});
+
+function testGetConstant() {
+    return 3;
+}
 
 let Wave = {
     period: 0,
@@ -17,7 +23,7 @@ let Wave = {
 
 let ExternalForce = {
     currentExternalForce: 0,
-    waveComponents: 10,
+    waveComponents: 12,
     arrayRandomWaves: [],
 
     GenerateRandomSignal: function(minPeriod, maxPeriod, maxAmplitude) {
@@ -26,8 +32,8 @@ let ExternalForce = {
             //consider restricting wave frequencies as a function of amplitude
             var waveComponent = Object.create(Wave);
             waveComponent.amplitude = (maxAmplitude / Math.sqrt(this.waveComponents)) * Math.random();
-            waveComponent.period = (maxPeriod - minPeriod) * Math.random() + minPeriod;
-            waveComponent.offset = Math.random() * waveComponent.frequency();
+            waveComponent.period = ((maxPeriod - minPeriod) * Math.random() + minPeriod) * screenUpdateIntervalMilliSec / 1000;
+            waveComponent.offset = Math.random() * maxPeriod;
             this.arrayRandomWaves.push(waveComponent)
         }
     },
@@ -43,53 +49,30 @@ let ExternalForce = {
     }
 }
 
-let testSignal = new Object(ExternalForce);
-testSignal.GenerateRandomSignal(1, 30, 10);
+var testSignal = new Object(ExternalForce);
+testSignal.GenerateRandomSignal(.5, 30, 10);
 
-$("#pausebutton").click(function() {blnPaused = !blnPaused;});
-
-Plotly.plot('chart', [{
-    y: [testSignal.GetExternalForce(0)],
-    type: 'line',
-    name: 'test1'
-}]);
-
-
-var cnt = 0;
-setInterval(function () {
-
-    if (!blnPaused) {
-        //testGetConstant()
-        Plotly.extendTraces('chart', { y: [[testSignal.GetExternalForce(cnt)]] }, [0]);
-
-        cnt++;
-        if (cnt > displayPoints) {
-            Plotly.relayout('chart', {
-                xaxis: {
-                    range: [cnt - displayPoints, cnt]
-                }
-            });
-        };
-
-    };
-}, screenUpdateIntervalMilliSec);
-
-function getPIDPollingRate() {
-    // ensure we are polling at a multiple of the screen refresh rate.
-    Math.floor(1000/desiredPIDPollingRate) // rate that is desired.
-
-    var multiple = Math.floor(screenUpdateIntervalMilliSec / (Math.floor(1000/desiredPIDPollingRate)));
-    return multiple * screenUpdateIntervalMilliSec;
+let Model = {
+    mass: 0,
+    GetNewState: function(timeInterval, state, externalForce, internalForce) {
+        state.currentTime += timeInterval;
+        state.currentVelocity += (0.5) * ((externalForce + internalForce) / this.mass) * Math.pow(timeInterval, 2);
+        state.currentPosition += state.currentVelocity * timeInterval;
+    }
 }
-
-function getData() {
-    return Math.random();
-}
+var model = new Object(Model);
+model.mass = 1;
 
 let CurrentState = {
     currentTime: 0,
-    currentPostion: 0
+    currentPosition: 0,
+    currentVelocity: 0,
+    getCurrentPosition: function() {
+        //return Math.random() * 5;
+        return this.currentPosition;
+    }
 }
+var state = new Object(CurrentState);
 
 let Controller = {
     tuneP: 0,
@@ -97,19 +80,81 @@ let Controller = {
     tuneD: 0,
     maxForceMagnitude: 0,
     currentOutputForce: 0,
-    GetNewOutput: function(timeInterval, currentPosition, externalForce, input) {       
-        // update currentOutputForce
+    currentIntegralError: 0,
+    GetNewOutput: function(timeInterval, currentVelocity, currentPosition, input) {       
+        
+        this.currentOutputForce += (input - currentPosition) * this.tuneP;
+        
+        this.currentIntegralError += timeInterval * (input - currentPosition);
+        this.currentOutputForce += this.currentIntegralError * this.tuneI;
+
+        this.currentOutputForce -= currentVelocity * this.tuneD;
     }
 }
 
-let Model = {
-    mass: 0,
-    GetNewState: function(timeInterval, externalForce, internalForce) {
+var control = new Object(Controller);
+control.tuneP = 2;
+control.tuneI = 0.5;
+control.tuneD = 0.25;
 
-    }
+Plotly.plot('chartForces', [
+    {   x: [iterationToTime(0)],  
+        y: [testSignal.GetExternalForce(0)],
+        type: 'line',
+        name: 'External Force'},           
+    {   x: [iterationToTime(0)],  
+        y: [state.getCurrentPosition()],
+        type: 'line',
+        name: 'Controller Force'}
+]);
+
+Plotly.plot('chartPositioning', [
+    {   x: [iterationToTime(0)],
+        y: [control.currentOutputForce],
+        type: 'line',
+        name: 'Desired Position'},        
+    {   x: [iterationToTime(0)],
+        y: [iterationToTime(0)],
+        type: 'line',
+        name: 'Actual Position'}
+]);
+
+var cnt = 0;
+setInterval(function () {
+
+    if (!blnPaused) {
+
+        var currentTime = iterationToTime(cnt);
+        var forceExternal = testSignal.GetExternalForce(currentTime)
+        model.GetNewState(screenUpdateIntervalMilliSec / 1000, state, forceExternal, control.currentOutputForce);
+
+        Plotly.extendTraces('chartForces', { y: [[forceExternal], [control.currentOutputForce]],
+                                             x: [[currentTime], [currentTime]] }, [0, 1]);
+
+        Plotly.extendTraces('chartPositioning', { y: [[getInput(currentTime)], [state.currentPosition]],
+                                                  x: [[currentTime], [currentTime]]}, [0, 1]);
+
+        cnt++;
+        if (iterationToTime(cnt) > displayTimeSec) {
+            Plotly.relayout('chartForces', { xaxis: { range: [currentTime - displayTimeSec, currentTime] } });
+            Plotly.relayout('chartPositioning', { xaxis: { range: [currentTime - displayTimeSec, currentTime] } });
+        };
+
+        control.GetNewOutput(screenUpdateIntervalMilliSec / 1000, state.currentVelocity, state.currentPosition, getInput(currentTime)) // set input
+    };
+}, screenUpdateIntervalMilliSec);
+
+function getPIDToRefreshMultiplier() {
+    // Non-critical value. Here, just determine how many PID iterations we should compute before each screen refresh
+    Math.floor(1000/desiredPIDPollingRate) // rate that is desired.
+    return Math.max(1, Math.floor(screenUpdateIntervalMilliSec / (Math.floor(1000/desiredPIDPollingRate))));
 }
 
-function testGetConstant() {
+function getInput(time) {
     return 3;
+}
+
+function iterationToTime(iteration) {
+    return usePIDIntervalMilliSec * iteration / 1000;
 }
 
