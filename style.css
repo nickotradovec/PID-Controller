@@ -6,12 +6,30 @@
     float: left;
     width: 33.33%;
     padding-left: 2%;
+    padding-right: 10%;
 }
 
 /* Clear floats after the columns */
 .row:after {
     content: "";
     display: table;
+    clear: both;
+}
+
+form {
+    overflow: hidden;
+}
+
+input, select {
+    float: right;
+    text-align: right;
+}
+
+input:disabled+label {
+    color:darkgray;
+}
+
+div.clear {
     clear: both;
 }
 

@@ -4,26 +4,15 @@ var screenUpdateIntervalMilliSec = 20;
 var displayPoints = displayTimeSec * 1000 / screenUpdateIntervalMilliSec;
 
 var valuesDefaulted = false;
-var randomForceOn = true;
 var desiredPIDPollingRate = 50;
 var usePIDIntervalMilliSec = screenUpdateIntervalMilliSec //= getPIDPollingRate();
-
-// Add our events.
-// Note that this is not truly event driven as we have a fast polling object already.
-// We will simply update our global value and allow the polling to pull the updated value.
-$("#pausebutton").click(function () { blnPaused = !blnPaused; });
-$("#reset").click(function () { valuesDefaulted = false; });
-
-$('#externalforce').change(function () {
-    randomForceOn = this.checked
-});
-
 
 // Objects types to be used
 let Wave = {
     period: 0,
     amplitude: 0,
     offset: 0,
+    xaxis: 'time (s)',
     frequency: function () {
         return 1 / this.period;
     }
@@ -31,6 +20,7 @@ let Wave = {
 
 let ExternalForce = {
     currentExternalForce: 0,
+    approximateMaxAmplitude: 0,
     waveComponents: 12,
     arrayRandomWaves: [],
 
@@ -39,29 +29,22 @@ let ExternalForce = {
         for (i = 0; i < this.waveComponents; i++) {
             //consider restricting wave frequencies as a function of amplitude
             var waveComponent = Object.create(Wave);
-            waveComponent.amplitude = (maxAmplitude / Math.sqrt(this.waveComponents)) * Math.random();
+            waveComponent.amplitude = (maxAmplitude / Math.sqrt(this.waveComponents)) * Math.random() / 10;
             waveComponent.period = ((maxPeriod - minPeriod) * Math.random() + minPeriod) * screenUpdateIntervalMilliSec / 1000;
             waveComponent.offset = Math.random() * maxPeriod;
-            this.arrayRandomWaves.push(waveComponent)
+            this.arrayRandomWaves.push(waveComponent);
         }
     },
 
     GetExternalForce: function (time) {
 
-        if (randomForceOn) {
-
-            // update currentExternalForce
-            var force = 0;
-            for (i = 0; i < this.arrayRandomWaves.length; i++) {
-                force += this.arrayRandomWaves[i].amplitude * Math.sin((time * this.arrayRandomWaves[i].frequency() - this.arrayRandomWaves[i].offset) / (2 * Math.PI));
-            }
-            this.currentExternalForce = force;
-            return this.currentExternalForce;
-
-        } else {
-            this.currentExternalForce = 0;
-            return this.currentExternalForce;
+        // update currentExternalForce
+        var force = 0;
+        for (i = 0; i < this.arrayRandomWaves.length; i++) {
+            force += this.arrayRandomWaves[i].amplitude * Math.sin((time * this.arrayRandomWaves[i].frequency() - this.arrayRandomWaves[i].offset) / (2 * Math.PI));
         }
+        this.currentExternalForce = this.approximateMaxAmplitude * force;
+        return this.currentExternalForce;
     }
 }
 
@@ -110,49 +93,84 @@ let Controller = {
     }
 }
 
+let Input = {
+    mode: '',
+    amplitude: 0,
+    frequency: 0,
+    manualvalue: 0,
+    currentinput: 0,
+    GetInput: function (time) {
+
+        switch (this.mode.toLowerCase()) {
+            case "sinwave":
+                this.currentinput = this.amplitude * Math.sin(time * 2 * Math.PI / this.frequency);
+                break;
+
+            case "squarewave":
+                this.currentinput = this.amplitude * Math.sign(Math.sin(time * 2 * Math.PI / this.frequency));
+                break;
+
+            case "trianglewave":
+                throw console.error("Unsupported input mode!");
+                break;
+
+            case "manual":
+                this.currentinput = this.manualvalue;
+                break;
+
+            default: throw console.error("Unsupported input mode!");
+        }
+        return this.currentinput;
+    }
+}
+
 // Initialize the objects we'll be using
 var testSignal = new Object(ExternalForce);
 var model = new Object(Model);
 var state = new Object(CurrentState);
 var control = new Object(Controller);
+var input = new Object(Input);
 
-$('#maxExternalForce').change(function () {
-    control.maxForceMagnitude = Math.abs($('#maxExternalForce').val());
-});
+setEvents();
 
-var layout = {
-    height: 230,
-    //width: 100,
-    margin: {
-        l: 60,
-        r: 10,
-        b: 0,
-        t: 10,
-        pad: 4
+var positionLayout = {
+    height: 250,
+    margin: { l: 60, r: 10, b: 20, t: 10, pad: 4 },
+    xaxis: {
+        title: 'Time (seconds)',
+        titlefont: { color: '#7f7f7f' }
+    },
+    yaxis: {
+        title: 'Position (meters)',
+        titlefont: { color: '#7f7f7f' }
     }
 };
 
 Plotly.plot('chartPositioning', [
     {
-        x: [iterationToTime(0)],
-        y: [0],
+        x: [],
+        y: [],
         type: 'line',
         name: 'Desired Position',
-        xaxis: 'test'
+        marker: { color: 'rgb(0, 204, 0)' }
     },
     {
-        x: [0],
-        y: [iterationToTime(0)],
+        x: [],
+        y: [],
         type: 'line',
-        name: 'Actual Position'
+        name: 'Actual Position',
     },
     {
-        x: [0],
-        y: [iterationToTime(0)],
+        x: [],
+        y: [],
         type: 'line',
-        name: 'Error'
+        name: 'Error',
+        marker: { color: 'rgb(255, 0, 0)' }
     }
-], layout);
+], positionLayout);
+
+var forceLayout = jQuery.extend(true, {}, positionLayout)
+forceLayout.yaxis.title = "Force (Newtons)"
 
 // Start our plots
 Plotly.plot('chartForces', [
@@ -166,9 +184,10 @@ Plotly.plot('chartForces', [
         x: [iterationToTime(0)],
         y: [0],
         type: 'line',
-        name: 'Controller Force'
-    }
-], layout);
+        name: 'Controller Force',
+        marker: { color: 'rgb(102, 0, 102)' }
+    }], forceLayout
+);
 
 // Default values here. we won't redo this on a reset
 testSignal.GenerateRandomSignal(.5, 30, 10);
@@ -179,14 +198,20 @@ setInterval(function () {
 
     if (!valuesDefaulted) {
 
+        // System Defaulting
+        testSignal.approximateMaxAmplitude = 10;
+        $('#maxExternalForce').val(10);
+
         model.mass = 1;
-        control.tuneP = 10000;
-        control.tuneI = 10;
-        control.tuneD = 3500;
+        $('#mass').val(1);
 
-        control.maxForceMagnitude = 20; $('#maxExternalForce').val(20);
+        // Controller Defaulting
+        DefaultControllerValues(control);
 
-        randomForceOn = true; $('#externalforce').val(true);
+        // Input Defaulting
+        DefaultInput(input);
+
+        setInputDisabled(input.mode);
 
         valuesDefaulted = true;
     }
@@ -203,7 +228,7 @@ setInterval(function () {
         }, [0, 1]);
 
         Plotly.extendTraces('chartPositioning', {
-            y: [[getInput(currentTime)], [state.currentPosition], [getInput(currentTime) - state.currentPosition]],
+            y: [[input.GetInput(currentTime)], [state.currentPosition], [state.currentPosition - input.GetInput(currentTime)]],
             x: [[currentTime], [currentTime], [currentTime]]
         }, [0, 1, 2]);
 
@@ -213,24 +238,94 @@ setInterval(function () {
             Plotly.relayout('chartPositioning', { xaxis: { range: [currentTime - displayTimeSec, currentTime] } });
         };
 
-        control.GetNewOutput(screenUpdateIntervalMilliSec / 1000, state.currentVelocity, state.currentPosition, getInput(currentTime)) // set input
+        control.GetNewOutput(screenUpdateIntervalMilliSec / 1000, state.currentVelocity, state.currentPosition, input.GetInput(currentTime)) // set input
     };
 }, screenUpdateIntervalMilliSec);
 
-function getPIDToRefreshMultiplier() {
-    // Non-critical value. Here, just determine how many PID iterations we should compute before each screen refresh
-    Math.floor(1000 / desiredPIDPollingRate) // rate that is desired.
-    return Math.max(1, Math.floor(screenUpdateIntervalMilliSec / (Math.floor(1000 / desiredPIDPollingRate))));
+function setEvents() {
+    $("#pausebutton").click(function () { blnPaused = !blnPaused; });
+    $("#reset").click(function () { valuesDefaulted = false; });
+
+    $('#maxExternalForce').change(function () { testSignal.approximateMaxAmplitude = Math.abs($('#maxExternalForce').val()); });
+    $('#mass').change(function () { model.mass = Math.abs($('#mass').val()); });
+    $('#noise').attr('disabled', 'disabled');
+    
+    $('#gainP').change(function () { control.tuneP = Math.abs($('#gainP').val()); });
+    $('#gainI').change(function () { control.tuneI = Math.abs($('#gainI').val()); });
+    $('#gainD').change(function () { control.tuneD = Math.abs($('#gainD').val()); });
+    $('#maxControlForce').change(function () { control.maxForceMagnitude = Math.abs($('#maxControlForce').val()); });
+    
+    $('#inputmode').change(function () {
+        input.mode = $('#inputmode').val();
+        setInputDisabled($('#inputmode').val());
+    });
+    $('#inputfrequency').change(function () { input.frequency = Math.abs($('#inputfrequency').val()); });
+    $('#inputamplitude').change(function () { input.amplitude = Math.abs($('#inputamplitude').val()); });
+    $('#inputmanual').change(function () { input.manualvalue = Math.abs($('#inputmanual').val()); });
 }
 
-function getInput(time) {
-    var multiplier = 1;
-    if (Math.floor(time / 5) % 2 > 0) { multiplier = -1; }
+function DefaultControllerValues(control) {
 
-    return 3 * multiplier
+    control.tuneP = 10000;
+    $('#gainP').val(10000);
+
+    control.tuneI = 10;
+    $('#gainI').val(10);
+
+    control.tuneD = 3500;
+    $('#gainD').val(3500);
+
+    control.maxForceMagnitude = 20;
+    $('#maxControlForce').val(20);
+
+    control.currentIntegralError = 0;
+}
+
+function DefaultInput(input) {
+    input.mode = "squarewave";
+    $('#inputmode').val("squarewave");
+
+    input.frequency = 10;
+    $('#inputfrequency').val(10);
+
+    input.amplitude = 5;
+    $('#inputamplitude').val(5);
+
+    input.manualvalue = 0;
+    $('#inputmanual').val(5);
+}
+
+function setInputDisabled(inputmode) {
+
+
+    switch (inputmode.toLowerCase()) {
+        // case iwth multiple values not working?
+        case "squarewave":
+            $('#inputfrequency').prop('disabled', false);
+            $('#inputamplitude').prop('disabled', false);
+            $('#inputmanual').prop('disabled', true);
+            break;
+
+        case "sinwave":
+            $('#inputfrequency').prop('disabled', false);
+            $('#inputamplitude').prop('disabled', false);
+            $('#inputmanual').prop('disabled', true);
+            break;
+
+        case "trianglewave":
+            $('#inputfrequency').prop('disabled', false);
+            $('#inputamplitude').prop('disabled', false);
+            $('#inputmanual').prop('disabled', true);
+            break;
+
+        case "manual":
+            $('#inputmanual').prop('disabled', false);
+            $('#inputfrequency').prop('disabled', true);
+            $('#inputamplitude').prop('disabled', true);
+            break;
+    }
 }
 
 function iterationToTime(iteration) {
     return usePIDIntervalMilliSec * iteration / 1000;
 }
-

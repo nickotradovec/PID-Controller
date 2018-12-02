@@ -3,7 +3,6 @@
 
 <head>
 
-
     <!--<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>  
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.slim.min.js"></script>-->
 
@@ -21,24 +20,27 @@
 
     <h1>PID Controller Simulation</h1>
 
+    <button type="button" id="pausebutton">Pause/Resume</button>
+    <button type="button" id="reset">Reset to Defaults</button>
+
     <div class="row">
         <div class="column">
             <div id="systemconfiguration">
                 <h3>System Configuration</h3>
-                <button type="button" id="pausebutton">Pause/Resume</button><br>
-                <button type="button" id="reset">Reset to Defaults</button><br>
-
-                <label for="externalforce">Random External Force</label>
-                <input type="checkbox" id="externalforce" name="externalforce"></input><br>
-
+                
                 <label for="maxExternalForce">Maximum External Force (N)</label>
-                <input type="number" id="maxExternalForce" name="maxExternalForce"></input><br>
-
-                <label for="noise">Simulate Noise</label>
-                <input type="checkbox" id="noise" name="noise"></input><br>
-
+                <input type="number" id="maxExternalForce" name="maxExternalForce"></input>
+                <div class="clear"></div>
+           
                 <label for="mass">Inertial Component (kg)</label>
-                <input type="number" id="mass" name="mass"></input><br>
+                <input type="number" id="mass" name="mass"></input>
+                <div class="clear"></div>
+
+                <input type="checkbox" id="noise" name="noise"></input>
+                <label for="noise">Simulate Noise</label>
+                
+                <div class="clear"></div>
+
             </div>
         </div>
 
@@ -46,20 +48,21 @@
             <div id="controllerconfiguration">
                 <h3>Controller Configuration</h3>
 
-                <label for="gainP">P Gain</label>
-                <input type="number" id="gainP" name="gainP"></input><br>
+                <label for="gainP">Proportional Gain</label>
+                <input type="number" id="gainP" name="gainP"></input>
+                <div class="clear"></div>
 
-                <label for="gainI">I Gain</label>
-                <input type="number" id="gainI" name="gainI"></input><br>
+                <label for="gainI">Integral Gain</label>
+                <input type="number" id="gainI" name="gainI"></input>
+                <div class="clear"></div>
 
-                <label for="gainD">D Gain</label>
-                <input type="number" id="gainD" name="gainD"></input><br>
+                <label for="gainD">Differential Gain</label>
+                <input type="number" id="gainD" name="gainD"></input>
+                <div class="clear"></div>
 
                 <label for="maxControlForce">Maximum Control Force (N)</label>
-                <input type="number" id="maxControlForce" name="maxControlForce"></input><br>
-
-                <label for="controlD">Controller Polling Frequency (Hertz)</label>
-                <input type="number" id="controlD" name="controlD"></input><br>
+                <input type="number" id="maxControlForce" name="maxControlForce"></input>
+                <div class="clear"></div>
 
             </div>
         </div>
@@ -68,15 +71,26 @@
             <div id="input">
                 <h3>Input</h3>
 
-                <label for="input">Input</label>
-                <select id="input" name="input">
-                    <option value="constant">Constant</option>
+                <label for="inputmode">Input</label>
+                <select id="inputmode" name="inputmode">
                     <option value="squarewave">Square Wave</option>
-                    <option value="triaglewave">Triangle Wave</option>
+                    <option value="sinwave">Sin Wave</option>
+                    <!--<option value="trianglewave">Triangle Wave</option>-->
                     <option value="manual">Manual</option>
                 </select>
-                <!--Some values here that depend on the input selection above-->
-                <!--Create fully through jquery or done here and hide?-->
+                <div class="clear"></div>
+                              
+                <input type="number" id="inputfrequency" name="inputfrequency"></input>
+                <label for="inputfrequency">Frequency (Hertz)</label>
+                <div class="clear"></div>
+             
+                <input type="number" id="inputamplitude" name="inputamplitude"></input>
+                <label for="inputamplitude">Amplitude (m)</label>
+                <div class="clear"></div>
+            
+                <input type="number" id="inputmanual" name="inputmanual"></input>
+                <label for="inputmanual">Manual Input (m)</label>
+                <div class="clear"></div>
 
             </div>
         </div>
