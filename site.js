@@ -1,20 +1,19 @@
 ﻿var blnPaused = false;
 var displayTimeSec = 15;
-var screenUpdateIntervalMilliSec = 20;
-var displayPoints = displayTimeSec * 1000 / screenUpdateIntervalMilliSec;
-
+var screenUpdateIntervalMilliSec = 30;
+var screenUpdateIntervalSec = screenUpdateIntervalMilliSec / 1000;
 var valuesDefaulted = false;
-var desiredPIDPollingRate = 50;
-var usePIDIntervalMilliSec = screenUpdateIntervalMilliSec //= getPIDPollingRate();
 
 // Objects types to be used
 let Wave = {
     period: 0,
     amplitude: 0,
     offset: 0,
-    xaxis: 'time (s)',
     frequency: function () {
         return 1 / this.period;
+    },
+    GetValue: function(time) {
+        return this.amplitude * Math.sin(2 * Math.PI * time * this.frequency() - this.offset);
     }
 }
 
@@ -30,7 +29,7 @@ let ExternalForce = {
             //consider restricting wave frequencies as a function of amplitude
             var waveComponent = Object.create(Wave);
             waveComponent.amplitude = (maxAmplitude / Math.sqrt(this.waveComponents)) * Math.random() / 10;
-            waveComponent.period = ((maxPeriod - minPeriod) * Math.random() + minPeriod) * screenUpdateIntervalMilliSec / 1000;
+            waveComponent.period = (maxPeriod - minPeriod) * Math.random() + minPeriod;
             waveComponent.offset = Math.random() * maxPeriod;
             this.arrayRandomWaves.push(waveComponent);
         }
@@ -41,7 +40,7 @@ let ExternalForce = {
         // update currentExternalForce
         var force = 0;
         for (i = 0; i < this.arrayRandomWaves.length; i++) {
-            force += this.arrayRandomWaves[i].amplitude * Math.sin((time * this.arrayRandomWaves[i].frequency() - this.arrayRandomWaves[i].offset) / (2 * Math.PI));
+            force += this.arrayRandomWaves[i].GetValue(time);
         }
         this.currentExternalForce = this.approximateMaxAmplitude * force;
         return this.currentExternalForce;
@@ -74,14 +73,14 @@ let Controller = {
     maxForceMagnitude: 0,
     currentOutputForce: 0,
     currentIntegralError: 0,
-    GetNewOutput: function (timeInterval, currentVelocity, currentPosition, input) {
+    GetNewOutput: function (timeInterval, currentVelocity, currentPosition, input, differentialInput) {
 
         var PComponent = ((input - currentPosition) * this.tuneP * timeInterval)
 
         this.currentIntegralError += (timeInterval * (input - currentPosition));
         var IComponent = this.currentIntegralError * this.tuneI;
 
-        var DComponent = (currentVelocity * this.tuneD * timeInterval * (-1));
+        var DComponent = ((currentVelocity - differentialInput) * this.tuneD * timeInterval * (-1));
 
         var ControllerPreferred = PComponent + IComponent + DComponent;
 
@@ -121,18 +120,35 @@ let Input = {
             default: throw console.error("Unsupported input mode!");
         }
         return this.currentinput;
+    },
+    GetDifferentialInput: function (time) {
+
+        switch (this.mode.toLowerCase()) {
+            case "sinwave":
+                return this.amplitude * Math.cos(time * 2 * Math.PI / this.frequency);
+                break;
+            case "squarewave":
+                return 0; break;
+            case "trianglewave":
+                throw console.error("Unsupported input mode!"); break;
+            case "manual": 
+            return 0; break;
+            default: throw console.error("Unsupported input mode!");
+        }
     }
 }
 
-// Initialize the objects we'll be using
+// Instantiating the objects we'll be using
 var testSignal = new Object(ExternalForce);
 var model = new Object(Model);
 var state = new Object(CurrentState);
 var control = new Object(Controller);
 var input = new Object(Input);
 
+
 setEvents();
 
+// Start our plots
 var positionLayout = {
     height: 250,
     margin: { l: 60, r: 10, b: 20, t: 10, pad: 4 },
@@ -172,7 +188,6 @@ Plotly.plot('chartPositioning', [
 var forceLayout = jQuery.extend(true, {}, positionLayout)
 forceLayout.yaxis.title = "Force (Newtons)"
 
-// Start our plots
 Plotly.plot('chartForces', [
     {
         x: [iterationToTime(0)],
@@ -212,7 +227,7 @@ setInterval(function () {
         DefaultInput(input);
 
         setInputDisabled(input.mode);
-
+        
         valuesDefaulted = true;
     }
 
@@ -220,7 +235,7 @@ setInterval(function () {
 
         var currentTime = iterationToTime(cnt);
         var forceExternal = testSignal.GetExternalForce(currentTime)
-        model.GetNewState(screenUpdateIntervalMilliSec / 1000, state, forceExternal, control.currentOutputForce);
+        model.GetNewState(screenUpdateIntervalSec, state, forceExternal, control.currentOutputForce);
 
         Plotly.extendTraces('chartForces', {
             y: [[forceExternal], [control.currentOutputForce]],
@@ -238,7 +253,7 @@ setInterval(function () {
             Plotly.relayout('chartPositioning', { xaxis: { range: [currentTime - displayTimeSec, currentTime] } });
         };
 
-        control.GetNewOutput(screenUpdateIntervalMilliSec / 1000, state.currentVelocity, state.currentPosition, input.GetInput(currentTime)) // set input
+        control.GetNewOutput(screenUpdateIntervalSec, state.currentVelocity, state.currentPosition, input.GetInput(currentTime), input.GetDifferentialInput(currentTime)) // set input
     };
 }, screenUpdateIntervalMilliSec);
 
@@ -266,17 +281,17 @@ function setEvents() {
 
 function DefaultControllerValues(control) {
 
-    control.tuneP = 10000;
-    $('#gainP').val(10000);
+    control.tuneP = 5000;
+    $('#gainP').val(5000);
 
     control.tuneI = 10;
     $('#gainI').val(10);
 
-    control.tuneD = 3500;
-    $('#gainD').val(3500);
+    control.tuneD = 2500;
+    $('#gainD').val(2500);
 
-    control.maxForceMagnitude = 20;
-    $('#maxControlForce').val(20);
+    control.maxForceMagnitude = 30;
+    $('#maxControlForce').val(30);
 
     control.currentIntegralError = 0;
 }
@@ -327,5 +342,5 @@ function setInputDisabled(inputmode) {
 }
 
 function iterationToTime(iteration) {
-    return usePIDIntervalMilliSec * iteration / 1000;
+    return screenUpdateIntervalSec * iteration;
 }
